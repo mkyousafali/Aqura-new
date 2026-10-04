@@ -2,8 +2,11 @@
 param(
     [string]$Remote = "origin",
     [string]$Branch = "master",
-    [string]$DeployHost = "8.213.42.21",
+    # Development phase: deploys ONLY to the local development server.
+    # Cloud production deployment is intentionally disabled until development is finished.
+    [string]$DeployHost = "192.168.0.156",
     [string]$DeployUser = "root",
+    [string]$HealthUrl = "http://localhost/",
     [string]$IdentityFile = "",
     [switch]$SkipPush,
     [switch]$SkipDeploy,
@@ -21,6 +24,15 @@ function Invoke-Checked {
     Write-Host "> $FilePath $($Arguments -join ' ')" -ForegroundColor Cyan
     & $FilePath @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Command failed with exit code ${LASTEXITCODE}: $FilePath" }
+}
+
+$blockedHosts = @("8.213.42.21", "urbanaqura.com", "app.urbanaqura.com", "supabase.urbanaqura.com")
+if ($blockedHosts -contains $DeployHost.ToLowerInvariant()) {
+    throw "Cloud deployment is disabled during development. Only the local server ($DeployHost is blocked)."
+}
+$frontendEnv = Join-Path $repoRoot "frontend/.env"
+if ((Test-Path -LiteralPath $frontendEnv) -and (Select-String -LiteralPath $frontendEnv -Pattern '^\s*VITE_SUPABASE_URL\s*=.*urbanaqura\.com' -Quiet)) {
+    throw "frontend/.env points VITE_SUPABASE_URL at the cloud. Point it at the local server before deploying."
 }
 
 $currentBranch = (& git branch --show-current).Trim()
@@ -110,7 +122,7 @@ try {
         Invoke-Checked "ssh" ($sshArgs + @($target, "mkdir -p /opt/aqura-web/incoming"))
         Invoke-Checked "scp" ($sshArgs + @($archive, "${target}:$remoteArchive"))
         Invoke-Checked "scp" ($sshArgs + @((Join-Path $PSScriptRoot "activate-release.sh"), "${target}:$remoteScript"))
-        Invoke-Checked "ssh" ($sshArgs + @($target, "bash '$remoteScript' '$remoteArchive' '$releaseId' '$commit'; status=`$?; rm -f '$remoteScript'; exit `$status"))
+        Invoke-Checked "ssh" ($sshArgs + @($target, "bash '$remoteScript' '$remoteArchive' '$releaseId' '$commit' '$HealthUrl'; status=`$?; rm -f '$remoteScript'; exit `$status"))
     }
     Write-Host "Push and deployment completed for $releaseId." -ForegroundColor Green
 }

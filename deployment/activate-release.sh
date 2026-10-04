@@ -10,7 +10,12 @@ NPM_CACHE_DIR="$APP_ROOT/.npm-cache"
 archive_path="${1:?Usage: activate-release.sh <archive> <release-id> <revision> [health-url]}"
 release_id="${2:?Usage: activate-release.sh <archive> <release-id> <revision> [health-url]}"
 revision="${3:?Usage: activate-release.sh <archive> <release-id> <revision> [health-url]}"
-health_url="${4:-https://urbanaqura.com/}"
+health_url="${4:-http://localhost/}"
+
+# The local server runs the app on Node 20 (same as production) installed at /opt/node20.
+if [[ -x /opt/node20/bin/npm ]]; then
+  export PATH="/opt/node20/bin:$PATH"
+fi
 
 if [[ ! "$release_id" =~ ^[0-9a-f]{7,40}-[0-9]{8}T[0-9]{6}Z$ ]]; then
   echo "Invalid release ID: $release_id" >&2
@@ -71,7 +76,6 @@ systemctl restart "$SERVICE_NAME"
 healthy=false
 for attempt in {1..15}; do
   if curl --fail --silent --show-error --max-time 10 \
-    --resolve "urbanaqura.com:443:127.0.0.1" \
     --output /dev/null "$health_url"; then
     healthy=true
     break
